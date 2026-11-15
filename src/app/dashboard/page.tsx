@@ -30,15 +30,17 @@ export default function DashboardPage() {
           setHouseholdName(meData.household.name);
         }
 
-        // Fetch adherence summary
-        const adhRes = await fetch('/api/adherence');
+        // Adherence and appointments are independent, so fetch them in parallel
+        const [adhRes, apptRes] = await Promise.all([
+          fetch('/api/adherence'),
+          fetch('/api/appointments'),
+        ]);
+
         if (adhRes.ok) {
           const adhData = await adhRes.json();
           setAdherence(adhData.summary);
         }
 
-        // Fetch upcoming appointments
-        const apptRes = await fetch('/api/appointments');
         if (apptRes.ok) {
           const apptData = await apptRes.json();
           const upcoming = (apptData.appointments || []).filter(
@@ -124,7 +126,7 @@ export default function DashboardPage() {
         {/* Highlight Metrics: Adherence & Next Appointment */}
         <div className="mt-8 grid grid-cols-1 gap-6 md:grid-cols-2">
           {/* Adherence Card */}
-          <div className="flex flex-col justify-between rounded-2xl border-3 border-blue-900 bg-white p-6 shadow-md">
+          <div className="flex flex-col justify-between rounded-2xl border-4 border-blue-900 bg-white p-6 shadow-md">
             <div>
               <div className="flex items-center justify-between">
                 <span className="text-lg font-bold uppercase tracking-wide text-blue-900">
