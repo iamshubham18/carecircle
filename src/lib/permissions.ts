@@ -25,7 +25,7 @@ export const DEFAULT_PERMISSIONS_MATRIX: PermissionsMatrix = {
     requireElderApproval: false,
   },
   family: {
-    canViewMeds: false,
+    canViewMeds: true,
     canEditMeds: false,
     canViewAppointments: true,
     canEditAppointments: false,
@@ -36,6 +36,9 @@ export const DEFAULT_PERMISSIONS_MATRIX: PermissionsMatrix = {
 
 /**
  * Pure function to check role permissions against matrix
+ * - elder: always true for every action
+ * - caretaker: default view + edit meds and appointments, view adherence
+ * - family: default view only (no edit rights)
  */
 export function can(
   role: Role,
@@ -43,23 +46,25 @@ export function can(
   matrix: PermissionsMatrix = DEFAULT_PERMISSIONS_MATRIX
 ): boolean {
   if (role === 'elder') {
-    return true; // Elder always has full permission
+    return true; // Elder owns the household and has full authority
   }
 
-  const rolePerms: RolePermissions = matrix[role];
-  if (!rolePerms) return false;
+  const rolePerms: RolePermissions | undefined = matrix[role];
+  if (!rolePerms) {
+    return false;
+  }
 
   switch (action) {
     case 'viewMeds':
-      return rolePerms.canViewMeds;
+      return !!rolePerms.canViewMeds;
     case 'editMeds':
-      return rolePerms.canEditMeds;
+      return !!rolePerms.canEditMeds;
     case 'viewAppointments':
-      return rolePerms.canViewAppointments;
+      return !!rolePerms.canViewAppointments;
     case 'editAppointments':
-      return rolePerms.canEditAppointments;
+      return !!rolePerms.canEditAppointments;
     case 'viewAdherence':
-      return rolePerms.canViewAdherence;
+      return !!rolePerms.canViewAdherence;
     default:
       return false;
   }

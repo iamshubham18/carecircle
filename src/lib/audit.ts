@@ -1,27 +1,36 @@
+import { adminDb } from './firebase';
 import type { AuditEntry } from './types';
 
+export interface WriteAuditParams {
+  householdId: string;
+  actorId: string;
+  action: 'create' | 'update' | 'delete' | 'take_dose';
+  entity: 'medication' | 'appointment' | 'dose' | 'permission';
+  entityId: string;
+  summary: string;
+}
+
 /**
- * Placeholder for writing audit log entries to Firestore (Phase 5)
+ * Writes an immutable audit entry to Firestore
  */
-export async function writeAudit(
-  _householdId: string,
-  _actorId: string,
-  _action: string,
-  _entity: string,
-  _entityId: string,
-  _summary: string
-): Promise<AuditEntry> {
+export async function writeAudit(params: WriteAuditParams): Promise<AuditEntry> {
+  const docRef = adminDb.collection('auditLog').doc();
   const entry: AuditEntry = {
-    id: `audit_${Date.now()}`,
-    householdId: _householdId,
-    actorId: _actorId,
-    action: _action,
-    entity: _entity,
-    entityId: _entityId,
-    summary: _summary,
+    id: docRef.id,
+    householdId: params.householdId,
+    actorId: params.actorId,
+    action: params.action,
+    entity: params.entity,
+    entityId: params.entityId,
+    summary: params.summary,
     at: new Date().toISOString(),
   };
 
-  // In Phase 5, this will write to adminDb.collection('auditLog')
+  try {
+    await docRef.set(entry);
+  } catch (_e) {
+    // Prevent audit logging failures from crashing API operations
+  }
+
   return entry;
 }
