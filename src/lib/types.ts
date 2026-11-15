@@ -69,6 +69,8 @@ export interface Appointment {
   location: string;
   notes?: string;
   reminderSentAt?: string;
+  reminder24hSentAt?: string;
+  reminder2hSentAt?: string;
   createdBy: string;
 }
 

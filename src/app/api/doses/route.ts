@@ -98,7 +98,7 @@ export async function GET(request: Request) {
     // 4. Detect any pending doses that are now missed (past grace period)
     const nowUtc = new Date().toISOString();
     const pendingDoses = existingDoses.filter((d) => d.status === 'pending');
-    const newlyMissed = detectMissedDoses(pendingDoses, nowUtc, 30);
+    const newlyMissed = detectMissedDoses(pendingDoses, nowUtc);
 
     if (newlyMissed.length > 0) {
       const batch = adminDb.batch();

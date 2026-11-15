@@ -1,7 +1,28 @@
-import type { Medication, DoseLog } from './types';
+import type { Medication, DoseLog, Appointment } from './types';
 
 export const DEFAULT_TIMEZONE = 'Asia/Kolkata';
+
+/**
+ * Timing helpers that read optional environment variables with standard defaults
+ */
+export function getGraceMinutes(): number {
+  const val = parseInt(process.env.GRACE_MINUTES || '30', 10);
+  return isNaN(val) ? 30 : val;
+}
+
+export function getEscalationMinutes(): number {
+  const val = parseInt(process.env.ESCALATION_MINUTES || '30', 10);
+  return isNaN(val) ? 30 : val;
+}
+
+export function getLookaheadMinutes(): number {
+  const val = parseInt(process.env.LOOKAHEAD_MINUTES || '15', 10);
+  return isNaN(val) ? 15 : val;
+}
+
 export const DEFAULT_GRACE_MINUTES = 30;
+export const DEFAULT_ESCALATION_MINUTES = 30;
+export const DEFAULT_LOOKAHEAD_MINUTES = 15;
 
 /**
  * Calculates timezone offset in minutes for a specific point in time using standard Intl API
@@ -57,11 +78,9 @@ export function localTimeToUtc(
   const hour = parseInt(hourStr || '0', 10);
   const minute = parseInt(minuteStr || '0', 10);
 
-  // Approximate point in time to determine DST / offset
   const approxUtc = new Date(Date.UTC(year, month, day, hour, minute, 0));
   const offsetMinutes = getTimezoneOffsetMinutes(approxUtc, timeZone);
 
-  // Exact UTC timestamp = local time minus timezone offset
   const exactUtcMs = approxUtc.getTime() - offsetMinutes * 60000;
   return new Date(exactUtcMs).toISOString();
 }
@@ -79,6 +98,22 @@ export function formatUtcToLocalTime(
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
+  });
+  return formatter.format(date);
+}
+
+/**
+ * Pure function: Formats a UTC ISO datetime into human-friendly local string (e.g. 15 Nov, 10:30 AM)
+ */
+export function formatUtcToLocalDateTime(
+  utcIso: string,
+  timeZone: string = DEFAULT_TIMEZONE
+): string {
+  const date = new Date(utcIso);
+  const formatter = new Intl.DateTimeFormat('en-IN', {
+    timeZone,
+    dateStyle: 'medium',
+    timeStyle: 'short',
   });
   return formatter.format(date);
 }
@@ -128,12 +163,10 @@ export function generateDoses(
   for (let i = 0; i < days; i++) {
     const currentDate = addDays(startDate, i);
 
-    // Skip if before medication start date
     if (currentDate < medication.startDate) {
       continue;
     }
 
-    // Skip if after medication end date (if defined)
     if (medication.endDate && currentDate > medication.endDate) {
       continue;
     }
@@ -158,12 +191,12 @@ export function generateDoses(
 
 /**
  * Pure function: Detects missed doses where status is 'pending' and the scheduled
- * time has passed the grace window (default 30 min).
+ * time has passed the grace window (default 30 min or GRACE_MINUTES env var).
  */
 export function detectMissedDoses(
   doses: DoseLog[],
   nowUtc: string = new Date().toISOString(),
-  graceMinutes: number = DEFAULT_GRACE_MINUTES
+  graceMinutes: number = getGraceMinutes()
 ): DoseLog[] {
   const nowMs = new Date(nowUtc).getTime();
   const graceMs = graceMinutes * 60 * 1000;
@@ -186,14 +219,119 @@ export function detectMissedDoses(
 export function shouldEscalate(
   dose: DoseLog,
   nowUtc: string = new Date().toISOString(),
-  delayMinutes: number = 30
+  delayMinutes: number = getEscalationMinutes(),
+  graceMinutes: number = getGraceMinutes()
 ): boolean {
   if (dose.status !== 'missed' || dose.escalatedAt) {
     return false;
   }
   const nowMs = new Date(nowUtc).getTime();
   const scheduledMs = new Date(dose.scheduledAt).getTime();
-  // 30 min grace + delayMinutes
-  const escalationThresholdMs = scheduledMs + (DEFAULT_GRACE_MINUTES + delayMinutes) * 60 * 1000;
+  const escalationThresholdMs = scheduledMs + (graceMinutes + delayMinutes) * 60 * 1000;
   return nowMs >= escalationThresholdMs;
+}
+
+/**
+ * Pure function: Finds doses due in the next windowMinutes (default 15 mins or LOOKAHEAD_MINUTES env var)
+ * that have not yet had a reminder sent.
+ * Idempotent: Excludes any dose where reminderSentAt is already set.
+ */
+export function findUpcomingDoses(
+  doses: DoseLog[],
+  nowUtc: string = new Date().toISOString(),
+  windowMinutes: number = getLookaheadMinutes()
+): DoseLog[] {
+  const nowMs = new Date(nowUtc).getTime();
+  const windowMs = windowMinutes * 60 * 1000;
+
+  return doses.filter((dose) => {
+    if (dose.status !== 'pending') return false;
+    if (dose.reminderSentAt) return false;
+
+    const scheduledMs = new Date(dose.scheduledAt).getTime();
+    return scheduledMs >= nowMs - 60000 && scheduledMs <= nowMs + windowMs;
+  });
+}
+
+/**
+ * Pure function: Finds pending doses that have passed the grace window (default 30 mins or GRACE_MINUTES).
+ */
+export function findOverdueDosesToMarkMissed(
+  doses: DoseLog[],
+  nowUtc: string = new Date().toISOString(),
+  graceMinutes: number = getGraceMinutes()
+): DoseLog[] {
+  const nowMs = new Date(nowUtc).getTime();
+  const graceMs = graceMinutes * 60 * 1000;
+
+  return doses.filter((dose) => {
+    if (dose.status !== 'pending') return false;
+    const scheduledMs = new Date(dose.scheduledAt).getTime();
+    return scheduledMs + graceMs < nowMs;
+  });
+}
+
+/**
+ * Pure function: Finds missed doses without escalatedAt where an additional
+ * delayMinutes (default 30 mins or ESCALATION_MINUTES) have passed since the grace window.
+ */
+export function findMissedDosesToEscalate(
+  doses: DoseLog[],
+  nowUtc: string = new Date().toISOString(),
+  delayMinutes: number = getEscalationMinutes(),
+  graceMinutes: number = getGraceMinutes()
+): DoseLog[] {
+  const nowMs = new Date(nowUtc).getTime();
+  const totalThresholdMs = (graceMinutes + delayMinutes) * 60 * 1000;
+
+  return doses.filter((dose) => {
+    if (dose.status !== 'missed') return false;
+    if (dose.escalatedAt) return false;
+
+    const scheduledMs = new Date(dose.scheduledAt).getTime();
+    return nowMs >= scheduledMs + totalThresholdMs;
+  });
+}
+
+export interface AppointmentReminderTarget {
+  appointment: Appointment;
+  type: '24h' | '2h';
+  noticeLabel: '24 hours' | '2 hours';
+}
+
+/**
+ * Pure function: Finds appointments requiring 24h or 2h reminders.
+ * Idempotent: Never sends the same reminder twice.
+ */
+export function findAppointmentsNeedingReminder(
+  appointments: Appointment[],
+  nowUtc: string = new Date().toISOString()
+): AppointmentReminderTarget[] {
+  const nowMs = new Date(nowUtc).getTime();
+  const targets: AppointmentReminderTarget[] = [];
+
+  for (const appt of appointments) {
+    const apptMs = new Date(appt.datetime).getTime();
+    const diffHours = (apptMs - nowMs) / (1000 * 60 * 60);
+
+    // 24h window: between 23h and 25h ahead, without reminder24hSentAt
+    if (diffHours >= 23 && diffHours <= 25 && !appt.reminder24hSentAt) {
+      targets.push({
+        appointment: appt,
+        type: '24h',
+        noticeLabel: '24 hours',
+      });
+    }
+
+    // 2h window: between 1h and 2.5h ahead, without reminder2hSentAt
+    if (diffHours >= 1 && diffHours <= 2.5 && !appt.reminder2hSentAt) {
+      targets.push({
+        appointment: appt,
+        type: '2h',
+        noticeLabel: '2 hours',
+      });
+    }
+  }
+
+  return targets;
 }

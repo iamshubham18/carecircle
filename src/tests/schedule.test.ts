@@ -1,15 +1,22 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   generateDoses,
-  detectMissedDoses,
-  shouldEscalate,
+  
+  findUpcomingDoses,
+  findOverdueDosesToMarkMissed,
+  findMissedDosesToEscalate,
+  findAppointmentsNeedingReminder,
+  getGraceMinutes,
+  getEscalationMinutes,
+  getLookaheadMinutes,
   localTimeToUtc,
   formatUtcToLocalTime,
   DEFAULT_TIMEZONE,
 } from '@/lib/schedule';
-import type { Medication, DoseLog } from '@/lib/types';
+import { escapeHtml } from '@/lib/mailer';
+import type { Medication, DoseLog, Appointment } from '@/lib/types';
 
-describe('schedule.ts pure domain logic', () => {
+describe('schedule.ts pure domain logic & reminders', () => {
   const sampleMed: Medication = {
     id: 'med_metformin',
     householdId: 'house_123',
@@ -20,6 +27,34 @@ describe('schedule.ts pure domain logic', () => {
     active: true,
     createdBy: 'user_elder',
   };
+
+  afterEach(() => {
+    delete process.env.GRACE_MINUTES;
+    delete process.env.ESCALATION_MINUTES;
+    delete process.env.LOOKAHEAD_MINUTES;
+  });
+
+  describe('Configurable Timing Environment Variables', () => {
+    it('returns default values (30, 30, 15) when env vars are unset', () => {
+      delete process.env.GRACE_MINUTES;
+      delete process.env.ESCALATION_MINUTES;
+      delete process.env.LOOKAHEAD_MINUTES;
+
+      expect(getGraceMinutes()).toBe(30);
+      expect(getEscalationMinutes()).toBe(30);
+      expect(getLookaheadMinutes()).toBe(15);
+    });
+
+    it('respects optional custom environment variables', () => {
+      process.env.GRACE_MINUTES = '45';
+      process.env.ESCALATION_MINUTES = '20';
+      process.env.LOOKAHEAD_MINUTES = '10';
+
+      expect(getGraceMinutes()).toBe(45);
+      expect(getEscalationMinutes()).toBe(20);
+      expect(getLookaheadMinutes()).toBe(10);
+    });
+  });
 
   describe('Timezone and UTC conversion', () => {
     it('converts Asia/Kolkata 08:00 on 2026-11-15 to UTC 02:30:00.000Z (+05:30 offset)', () => {
@@ -54,9 +89,8 @@ describe('schedule.ts pure domain logic', () => {
         ...sampleMed,
         startDate: '2026-11-17',
       };
-      // Requesting 7 days starting 2026-11-15 (Nov 15, 16 skipped)
       const doses = generateDoses(medWithLaterStart, '2026-11-15', 7);
-      expect(doses).toHaveLength(10); // 5 days * 2 times = 10
+      expect(doses).toHaveLength(10);
       expect(doses[0]?.scheduledAt.startsWith('2026-11-17')).toBe(true);
     });
 
@@ -67,7 +101,7 @@ describe('schedule.ts pure domain logic', () => {
         endDate: '2026-11-16',
       };
       const doses = generateDoses(medWithEnd, '2026-11-15', 7);
-      expect(doses).toHaveLength(4); // 2 days * 2 = 4
+      expect(doses).toHaveLength(4);
     });
 
     it('returns empty array when medication is inactive', () => {
@@ -83,88 +117,228 @@ describe('schedule.ts pure domain logic', () => {
     });
   });
 
-  describe('detectMissedDoses()', () => {
-    it('marks pending dose as missed when current time exceeds 30-minute grace window', () => {
+  describe('Phase 3: findUpcomingDoses() & Idempotency', () => {
+    it('finds pending doses due within the next lookahead window', () => {
+      const nowUtc = '2026-11-15T08:00:00.000Z';
       const doses: DoseLog[] = [
         {
-          id: 'd1',
+          id: 'due_soon',
           householdId: 'h1',
           medicationId: 'm1',
-          scheduledAt: '2026-11-15T08:00:00.000Z',
+          scheduledAt: '2026-11-15T08:10:00.000Z', // 10 mins away
+          status: 'pending',
+        },
+        {
+          id: 'due_later',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:45:00.000Z', // 45 mins away
           status: 'pending',
         },
       ];
 
-      // 45 minutes later -> past 30 min grace -> missed
+      const upcoming = findUpcomingDoses(doses, nowUtc, 15);
+      expect(upcoming).toHaveLength(1);
+      expect(upcoming[0]?.id).toBe('due_soon');
+    });
+
+    it('is strictly idempotent: skips doses that already have reminderSentAt', () => {
+      const nowUtc = '2026-11-15T08:00:00.000Z';
+      const doses: DoseLog[] = [
+        {
+          id: 'already_reminded',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:10:00.000Z',
+          status: 'pending',
+          reminderSentAt: '2026-11-15T07:55:00.000Z',
+        },
+      ];
+
+      const upcoming = findUpcomingDoses(doses, nowUtc, 15);
+      expect(upcoming).toHaveLength(0);
+    });
+
+    it('skips taken or missed doses for upcoming reminders', () => {
+      const nowUtc = '2026-11-15T08:00:00.000Z';
+      const doses: DoseLog[] = [
+        {
+          id: 'already_taken',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:05:00.000Z',
+          status: 'taken',
+        },
+        {
+          id: 'already_missed',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:05:00.000Z',
+          status: 'missed',
+        },
+      ];
+
+      const upcoming = findUpcomingDoses(doses, nowUtc, 15);
+      expect(upcoming).toHaveLength(0);
+    });
+  });
+
+  describe('Phase 3: findOverdueDosesToMarkMissed()', () => {
+    it('detects pending doses exceeding grace window', () => {
       const nowUtc = '2026-11-15T08:45:00.000Z';
-      const missed = detectMissedDoses(doses, nowUtc, 30);
-      expect(missed).toHaveLength(1);
-      expect(missed[0]?.status).toBe('missed');
-    });
-
-    it('does not mark pending dose as missed if within grace window', () => {
       const doses: DoseLog[] = [
         {
-          id: 'd1',
+          id: 'overdue_dose',
           householdId: 'h1',
           medicationId: 'm1',
-          scheduledAt: '2026-11-15T08:00:00.000Z',
+          scheduledAt: '2026-11-15T08:00:00.000Z', // 45 mins ago (>30m grace)
+          status: 'pending',
+        },
+        {
+          id: 'within_grace',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:25:00.000Z', // 20 mins ago (within 30m grace)
           status: 'pending',
         },
       ];
 
-      // 20 minutes later -> within 30 min grace -> still pending
-      const nowUtc = '2026-11-15T08:20:00.000Z';
-      const missed = detectMissedDoses(doses, nowUtc, 30);
-      expect(missed).toHaveLength(0);
+      const overdue = findOverdueDosesToMarkMissed(doses, nowUtc, 30);
+      expect(overdue).toHaveLength(1);
+      expect(overdue[0]?.id).toBe('overdue_dose');
     });
 
-    it('does not alter already taken doses', () => {
+    it('leaves already completed doses untouched', () => {
+      const nowUtc = '2026-11-15T10:00:00.000Z';
       const doses: DoseLog[] = [
         {
-          id: 'd1',
+          id: 'd_taken',
           householdId: 'h1',
           medicationId: 'm1',
           scheduledAt: '2026-11-15T08:00:00.000Z',
           status: 'taken',
-          takenAt: '2026-11-15T08:05:00.000Z',
         },
       ];
 
-      const nowUtc = '2026-11-15T12:00:00.000Z';
-      const missed = detectMissedDoses(doses, nowUtc, 30);
-      expect(missed).toHaveLength(0);
+      const overdue = findOverdueDosesToMarkMissed(doses, nowUtc, 30);
+      expect(overdue).toHaveLength(0);
     });
   });
 
-  describe('shouldEscalate()', () => {
-    const missedDose: DoseLog = {
-      id: 'd_missed',
-      householdId: 'h1',
-      medicationId: 'm1',
-      scheduledAt: '2026-11-15T08:00:00.000Z',
-      status: 'missed',
-    };
+  describe('Phase 3: findMissedDosesToEscalate() & Idempotency', () => {
+    it('escalates missed doses when total threshold (grace + delay) passes', () => {
+      const nowUtc = '2026-11-15T09:10:00.000Z';
+      const doses: DoseLog[] = [
+        {
+          id: 'ready_to_escalate',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:00:00.000Z', // 70m ago (>= 30 grace + 30 delay)
+          status: 'missed',
+        },
+        {
+          id: 'too_early_to_escalate',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:30:00.000Z', // 40m ago (< 60m total)
+          status: 'missed',
+        },
+      ];
 
-    it('escalates to caretaker when past grace (30m) + delay (30m) = 60m', () => {
-      // 65 minutes later
-      const now = '2026-11-15T09:05:00.000Z';
-      expect(shouldEscalate(missedDose, now, 30)).toBe(true);
+      const toEscalate = findMissedDosesToEscalate(doses, nowUtc, 30, 30);
+      expect(toEscalate).toHaveLength(1);
+      expect(toEscalate[0]?.id).toBe('ready_to_escalate');
     });
 
-    it('does not escalate before delay window expires', () => {
-      // 40 minutes later (in missed state, but not yet past caretaker delay threshold)
-      const now = '2026-11-15T08:40:00.000Z';
-      expect(shouldEscalate(missedDose, now, 30)).toBe(false);
+    it('is strictly idempotent: skips missed doses that already have escalatedAt', () => {
+      const nowUtc = '2026-11-15T09:30:00.000Z';
+      const doses: DoseLog[] = [
+        {
+          id: 'already_escalated',
+          householdId: 'h1',
+          medicationId: 'm1',
+          scheduledAt: '2026-11-15T08:00:00.000Z',
+          status: 'missed',
+          escalatedAt: '2026-11-15T09:05:00.000Z',
+        },
+      ];
+
+      const toEscalate = findMissedDosesToEscalate(doses, nowUtc, 30, 30);
+      expect(toEscalate).toHaveLength(0);
+    });
+  });
+
+  describe('Phase 3: findAppointmentsNeedingReminder() & Idempotency', () => {
+    it('detects appointments needing 24h and 2h reminders', () => {
+      const nowUtc = '2026-11-15T10:00:00.000Z';
+      const appointments: Appointment[] = [
+        {
+          id: 'appt_24h',
+          householdId: 'h1',
+          doctor: 'Dr. Smith',
+          datetime: '2026-11-16T10:00:00.000Z',
+          location: 'Clinic A',
+          createdBy: 'u1',
+        },
+        {
+          id: 'appt_2h',
+          householdId: 'h1',
+          doctor: 'Dr. Jones',
+          datetime: '2026-11-15T11:45:00.000Z',
+          location: 'Clinic B',
+          createdBy: 'u1',
+        },
+        {
+          id: 'appt_far_away',
+          householdId: 'h1',
+          doctor: 'Dr. Brown',
+          datetime: '2026-11-20T10:00:00.000Z',
+          location: 'Clinic C',
+          createdBy: 'u1',
+        },
+      ];
+
+      const reminders = findAppointmentsNeedingReminder(appointments, nowUtc);
+      expect(reminders).toHaveLength(2);
+      expect(reminders.find((r) => r.appointment.id === 'appt_24h')?.type).toBe('24h');
+      expect(reminders.find((r) => r.appointment.id === 'appt_2h')?.type).toBe('2h');
     });
 
-    it('does not escalate if already escalated', () => {
-      const alreadyEscalated: DoseLog = {
-        ...missedDose,
-        escalatedAt: '2026-11-15T09:00:00.000Z',
-      };
-      const now = '2026-11-15T10:00:00.000Z';
-      expect(shouldEscalate(alreadyEscalated, now, 30)).toBe(false);
+    it('is strictly idempotent: skips already sent appointment reminders', () => {
+      const nowUtc = '2026-11-15T10:00:00.000Z';
+      const appointments: Appointment[] = [
+        {
+          id: 'appt_already_24h',
+          householdId: 'h1',
+          doctor: 'Dr. Smith',
+          datetime: '2026-11-16T10:00:00.000Z',
+          location: 'Clinic A',
+          reminder24hSentAt: '2026-11-15T09:50:00.000Z',
+          createdBy: 'u1',
+        },
+        {
+          id: 'appt_already_2h',
+          householdId: 'h1',
+          doctor: 'Dr. Jones',
+          datetime: '2026-11-15T11:45:00.000Z',
+          location: 'Clinic B',
+          reminder2hSentAt: '2026-11-15T09:55:00.000Z',
+          createdBy: 'u1',
+        },
+      ];
+
+      const reminders = findAppointmentsNeedingReminder(appointments, nowUtc);
+      expect(reminders).toHaveLength(0);
+    });
+  });
+
+  describe('Security: escapeHtml()', () => {
+    it('escapes unsafe HTML characters to prevent email injection', () => {
+      const dirty = '<script>alert("XSS")</script> & Mary\'s medicine';
+      const clean = escapeHtml(dirty);
+      expect(clean).toBe(
+        '&lt;script&gt;alert(&quot;XSS&quot;)&lt;/script&gt; &amp; Mary&#039;s medicine'
+      );
     });
   });
 });
