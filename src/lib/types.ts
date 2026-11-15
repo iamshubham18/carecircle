@@ -85,6 +85,14 @@ export interface AuditEntry {
   at: string; // UTC ISO string
 }
 
+export interface EnrichedAuditEntry extends AuditEntry {
+  actorName: string;
+  actorRole: string;
+  actionLabel: string;
+  entityLabel: string;
+  icon: string;
+}
+
 export interface SessionData {
   userId: string;
   householdId: string;

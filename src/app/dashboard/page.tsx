@@ -250,6 +250,40 @@ export default function DashboardPage() {
               High-contrast, large-button view designed specifically for quick one-tap dose logging.
             </p>
           </Link>
+
+          <Link
+            href="/activity"
+            className="group rounded-2xl border-2 border-slate-300 bg-white p-6 shadow-sm transition-all hover:border-blue-900 hover:shadow-md"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-2xl" aria-hidden="true">📋</span>
+              <span className="text-xl font-bold text-blue-900 group-hover:translate-x-1 transition-transform">
+                &rarr;
+              </span>
+            </div>
+            <h2 className="mt-3 text-2xl font-black text-slate-950">Activity Log</h2>
+            <p className="mt-1 text-base font-medium text-slate-600">
+              See who added medications, took doses, and made changes.
+            </p>
+          </Link>
+
+          {session?.role === 'elder' && (
+            <Link
+              href="/settings/permissions"
+              className="group rounded-2xl border-2 border-slate-300 bg-white p-6 shadow-sm transition-all hover:border-blue-900 hover:shadow-md"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-2xl" aria-hidden="true">🔐</span>
+                <span className="text-xl font-bold text-blue-900 group-hover:translate-x-1 transition-transform">
+                  &rarr;
+                </span>
+              </div>
+              <h2 className="mt-3 text-2xl font-black text-slate-950">Permission Settings</h2>
+              <p className="mt-1 text-base font-medium text-slate-600">
+                Control what caretakers and family members can see and do.
+              </p>
+            </Link>
+          )}
         </div>
       </main>
     </div>

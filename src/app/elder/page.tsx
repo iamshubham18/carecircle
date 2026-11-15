@@ -113,16 +113,30 @@ export default function ElderTodayPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href="/activity"
+              className="min-h-[48px] inline-flex items-center rounded-xl border-2 border-slate-400 bg-slate-50 px-4 py-2 text-base font-bold text-slate-900 hover:bg-slate-200 focus:outline-none focus:ring-4 focus:ring-blue-600"
+            >
+              📋 Activity
+            </Link>
+            {session?.role === 'elder' && (
+              <Link
+                href="/settings/permissions"
+                className="min-h-[48px] inline-flex items-center rounded-xl border-2 border-slate-400 bg-slate-50 px-4 py-2 text-base font-bold text-slate-900 hover:bg-slate-200 focus:outline-none focus:ring-4 focus:ring-blue-600"
+              >
+                🔐 Settings
+              </Link>
+            )}
             <Link
               href="/dashboard"
-              className="min-h-[48px] inline-flex items-center rounded-xl border-2 border-slate-400 bg-slate-50 px-4 py-2 text-lg font-bold text-slate-900 hover:bg-slate-200 focus:outline-none focus:ring-4 focus:ring-blue-600"
+              className="min-h-[48px] inline-flex items-center rounded-xl border-2 border-slate-400 bg-slate-50 px-4 py-2 text-base font-bold text-slate-900 hover:bg-slate-200 focus:outline-none focus:ring-4 focus:ring-blue-600"
             >
               Dashboard
             </Link>
             <button
               onClick={handleLogout}
-              className="min-h-[48px] rounded-xl border-2 border-slate-400 bg-white px-4 py-2 text-lg font-bold text-slate-900 hover:bg-slate-200 focus:outline-none focus:ring-4 focus:ring-blue-600"
+              className="min-h-[48px] rounded-xl border-2 border-slate-400 bg-white px-4 py-2 text-base font-bold text-slate-900 hover:bg-slate-200 focus:outline-none focus:ring-4 focus:ring-blue-600"
             >
               Sign Out
             </button>

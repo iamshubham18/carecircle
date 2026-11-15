@@ -4,7 +4,7 @@ import type { AuditEntry } from './types';
 export interface WriteAuditParams {
   householdId: string;
   actorId: string;
-  action: 'create' | 'update' | 'delete' | 'take_dose';
+  action: 'create' | 'update' | 'delete' | 'take_dose' | 'update_permissions' | 'scan_confirm';
   entity: 'medication' | 'appointment' | 'dose' | 'permission';
   entityId: string;
   summary: string;

@@ -45,6 +45,20 @@ export const appointmentSchema = z.object({
 
 export const updateAppointmentSchema = appointmentSchema.partial();
 
+export const rolePermissionsSchema = z.object({
+  canViewMeds: z.boolean(),
+  canEditMeds: z.boolean(),
+  canViewAppointments: z.boolean(),
+  canEditAppointments: z.boolean(),
+  canViewAdherence: z.boolean(),
+  requireElderApproval: z.boolean().optional().default(false),
+});
+
+export const updatePermissionsSchema = z.object({
+  caretaker: rolePermissionsSchema,
+  family: rolePermissionsSchema,
+});
+
 export type CreateHouseholdInput = z.infer<typeof createHouseholdSchema>;
 export type JoinHouseholdInput = z.infer<typeof joinHouseholdSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
@@ -52,3 +66,4 @@ export type MedicationInput = z.infer<typeof medicationSchema>;
 export type UpdateMedicationInput = z.infer<typeof updateMedicationSchema>;
 export type AppointmentInput = z.infer<typeof appointmentSchema>;
 export type UpdateAppointmentInput = z.infer<typeof updateAppointmentSchema>;
+export type UpdatePermissionsInput = z.infer<typeof updatePermissionsSchema>;
