@@ -1,3 +1,5 @@
+import type { NextRequest } from 'next/server';
+
 interface RateLimitEntry {
   count: number;
   resetAt: number;
@@ -5,11 +7,41 @@ interface RateLimitEntry {
 
 const rateLimitStore = new Map<string, RateLimitEntry>();
 
+// Clean up stale entries every 5 minutes to avoid memory leaks
+if (typeof setInterval !== 'undefined') {
+  setInterval(
+    () => {
+      const now = Date.now();
+      for (const [key, entry] of rateLimitStore.entries()) {
+        if (now > entry.resetAt) {
+          rateLimitStore.delete(key);
+        }
+      }
+    },
+    5 * 60 * 1000
+  ).unref?.();
+}
+
 /**
- * Simple in-memory rate limiter
- * @param key unique identifier (e.g. IP address or route+IP)
- * @param maxRequests maximum allowed requests within the window
- * @param windowMs time window in milliseconds
+ * Extracts client IP identifier from NextRequest
+ */
+export function getClientIp(request: Request | NextRequest): string {
+  const forwardedFor = request.headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    return forwardedFor.split(',')[0]?.trim() || 'unknown';
+  }
+  const realIp = request.headers.get('x-real-ip');
+  if (realIp) {
+    return realIp.trim();
+  }
+  return '127.0.0.1';
+}
+
+/**
+ * Simple in-memory rate limiter per IP / route key
+ * @param key unique identifier (e.g. `${route}:${ip}`)
+ * @param maxRequests maximum allowed requests within the window (default 5)
+ * @param windowMs time window in milliseconds (default 60 seconds)
  */
 export function checkRateLimit(
   key: string,
