@@ -1,215 +1,199 @@
 # CareCircle
 
-> **A smart, shared care ecosystem where elderly people, caretakers, and family manage medications, routines, and appointments—with the elder always in control.**
+**An elder-first care platform where elders, caretakers and family manage medications and appointments together, and the elder always stays in control.**
 
-[![Live Demo](https://img.shields.io/badge/demo-live%20preview-blue)](https://your-app.vercel.app)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Built solo for the Catalyst Hackathon (PromptWars x Catalyst, powered by Google for Developers).
 
----
+- **Live demo:** [LIVE_URL, e.g. https://carecircle-navy.vercel.app]
+- **Repository:** [https://github.com/iamshubham18/carecircle.git]
 
-## 1. Live Demo & Screenshots
+## Demo access (sample data only)
 
-- **Live Deployed Application**: [https://your-app.vercel.app](https://your-app.vercel.app) *(To be updated after Vercel deployment)*
-- **One-Click Demo**: Accessible via "Try demo" on the landing page (preloaded with sample elderly household, medications, and schedule).
+Open the live link, choose **Sign in**, and use:
 
-### Screenshots
-*(Screenshots will be added during Phase 6)*
-- **Landing Page**: Large-contrast, accessible entry points.
-- **Elder Today View**: High-contrast, large-button interface for one-tap dose marking.
-- **Family / Caretaker Dashboard**: Adherence overview and schedule monitoring.
-- **Gemini Scan & Explainer**: Prescription draft extraction with physician disclaimers.
+| Role | Household code | Email | PIN |
+|---|---|---|---|
+| Elder | [A89UTHRY] | [sv9900771@gmail.com] | [1234] |
+| Caretaker | [A89UTHRY] | [shubhamkverma18@gmail.com] | [2345] |
+| Family | [A89UTHRY] | [example@gmail.com] | [3456] |
 
----
+Or create your own household from the landing page. On the Medications page, click **Scan prescription > Try with sample** to see the Gemini scan in one click.
 
-## 2. Problem Statement & CareCircle Solution
+## Screenshots
 
-Elderly individuals frequently juggle multiple prescription medications with complex schedules, leading to missed doses, incorrect timing, or accidental double-dosing. Existing digital reminder apps present severe friction:
-1. **Paternalistic Design**: Most apps treat seniors as passive subjects monitored by relatives, eroding autonomy and dignity.
-2. **Cognitive & Visual Overload**: Small fonts, poor contrast ratios, complex nested navigations, and ambiguous icons make apps unusable for aging eyes and motor tremor.
-3. **Communication Gaps**: Missed doses often go unnoticed by family and caretakers until a health crisis occurs.
+![Landing page](docs/landing.png)
+![Elder Today view](docs/elder-today.png)
+![medication](docs/medication.png)
+![Permissions](docs/permissions.png)
+![Dashboard](docs/dashboard.png)
 
-### How CareCircle Solves It Point-by-Point:
-- **Elder at the Centre of Control**: The elder owns the household. They determine permissions, approve medication updates, and mark doses directly.
-- **Elder-First Accessibility**: High-contrast tokens, minimum 18px base typography, 48px+ touch targets, skip links, screen-reader semantics, and voice support.
-- **Smart Escalation Matrix**: Reminders alert the elder first. If a dose remains unconfirmed past the grace window, the system proactively notifies designated caretakers.
-- **Multimodal AI Assistance**: Gemini Vision turns complex pill-strip packaging and prescriptions into structured drafts that the elder or caretaker confirms with doctor guidance.
+## The problem
 
----
+Elderly people often juggle many medicines and appointments, while their families worry about missed doses. Most reminder apps are simple alarms: they don't involve caretakers, and they treat the elder as someone to be monitored rather than someone who makes their own healthcare decisions.
 
-## 3. Features & Architecture
+## How CareCircle answers the problem statement
 
-### Must Features (Baseline)
-- **Household Passcode Access**: Secure household creation and joining via 8-character code and individual hashed PINs.
-- **Role-Based Views**: Distinct capabilities tailored for Elder, Caretaker, and Family members.
-- **Medication & Appointment CRUD**: Multiple daily times, start/end dates, doctor notes, and scheduling.
-- **Pure Adherence Calculation**: Real-time 7-day and 30-day percentage calculations based on scheduled vs. taken doses.
-- **Proactive Email Reminders**: Timezone-aware reminders for upcoming doses, appointments, and missed dose escalations.
+| Requirement | What CareCircle does |
+|---|---|
+| Shared ecosystem with secure passcode access | Household code plus a personal PIN (bcrypt-hashed). Session in an httpOnly signed JWT cookie. |
+| View, add, edit and manage medication schedules | Full medication CRUD with multiple daily times and generated dose logs. |
+| Track adherence | Daily, 7-day and 30-day adherence percentages. One-tap "I took it". |
+| Monitor upcoming appointments | Appointment CRUD with an upcoming list on the dashboard. |
+| Proactive email reminders | Upcoming dose, missed dose and appointment emails sent by a protected cron endpoint. |
+| Go beyond a basic reminder app | Gemini prescription scan, smart escalation to caretakers, elder-controlled permissions and an audit trail. |
+| Elder stays at the centre | The elder decides what each role can see or edit, and every change is logged. |
 
-### Differentiators (Winning Features)
-- **Elder-Controlled Permissions Matrix**: Granular toggles allowing the elder to grant or revoke caretaker and family editing privileges in real time.
-- **Immutable Audit Trail**: Log of all medication additions, deletions, dose acknowledgments, and permission changes.
-- **Gemini Prescription Scan**: OCR and schedule structuring from photos of prescriptions, strictly requiring user confirmation and doctor disclaimer.
-- **Smart Two-Tier Escalation**: Proactive email ping to the elder followed by caretaker alert after a configurable grace period.
+## Features
 
----
+**Core**
+- Household create, join and sign-in with roles: elder, caretaker, family
+- Medications with multiple daily times, soft delete, and generated dose logs
+- Adherence tracking (today, 7-day, 30-day)
+- Appointments with upcoming view
+- Email reminders for upcoming doses, missed doses and appointments
 
-## 4. Architecture & Repository Structure
+**Differentiators**
+1. **Elder-in-control permissions.** The elder uses a simple grid to choose what caretakers and family can view or edit. Every API route enforces the matrix on the server, and the elder can never be locked out.
+2. **Gemini prescription scan.** Photograph a prescription or pill strip. Gemini extracts medicines, doses and times into an editable draft. Nothing is saved until the user confirms.
+3. **Smart escalation.** A missed dose first reminds the elder, then emails every caretaker after a delay. Reminder and escalation flags make the process idempotent, so nobody gets duplicate emails.
+4. **Activity log.** A readable audit trail of who did what and when.
+5. **Elder-first UI.** Large text, high contrast, 48px+ touch targets, one-tap dose logging.
 
-CareCircle uses Next.js 14 App Router with pure server-side Firestore operations, strict separation of concerns, and zero client-side database exposure.
+## Google services used
 
-### Folder Structure
+- **Gemini API** (`@google/genai`) for prescription image understanding, with a JSON-only prompt validated by zod
+- **Firebase Firestore** (Admin SDK, server-side only) for all data
+- **Google AI Studio** for API keys and model selection
+- **Gmail SMTP** for reminder emails
+
+## Tech stack
+
+Next.js 14 (App Router), TypeScript (strict), Tailwind CSS, Firebase Admin / Firestore, Gemini API, jose (JWT), bcryptjs, zod, Nodemailer, Vitest, ESLint, Prettier, deployed on Vercel. Reminders are triggered by an external scheduler (cron-job.org) calling a secret-protected endpoint.
+
+## Architecture
+
 ```
-carecircle/
-  README.md                   # Problem, features, architecture, setup, env, tests
-  .env.example                # Template of all required environment variables
-  .gitignore                  # Strictly ignores secrets, credentials, and artifacts
-  package.json                # Project scripts and dependencies
-  tsconfig.json               # Strict TypeScript configuration
-  vitest.config.ts            # Unit testing configuration for pure logic
-  tailwind.config.ts          # High-contrast color tokens and elder typography
-  src/
-    app/
-      page.tsx                # Accessible landing page + "Try demo"
-      layout.tsx              # Root layout with lang attribute and skip link
-      (auth)/
-        create/page.tsx       # Household creation
-        join/page.tsx         # Household join with code + PIN
-      dashboard/page.tsx      # Role-aware dashboard
-      elder/page.tsx          # Large-button "Today" view for seniors
-      medications/            # Medication management
-      appointments/           # Doctor appointment tracking
-      settings/permissions/   # Elder-only permissions matrix
-      activity/               # Household audit log
-      api/
-        auth/                 # Create, join, logout, me routes
-        medications/          # Medication CRUD routes
-        doses/                # Dose take routes
-        appointments/         # Appointment routes
-        permissions/          # Role permission matrix routes
-        audit/                # Activity history routes
-        ai/scan/              # Gemini prescription scan
-        ai/explain/           # Gemini medication explainer
-        cron/reminders/       # Scheduled reminder & escalation engine
-        health/               # Health check confirming Firestore connectivity
-    lib/
-      firebase.ts             # Firebase Admin singleton (server-side only)
-      auth.ts                 # PIN hashing (bcryptjs) & JWT tokens (jose)
-      permissions.ts          # Pure permission checker: can(role, action, matrix)
-      schedule.ts             # Pure dose schedule generator & missed dose detector
-      adherence.ts            # Pure adherence percentage calculator
-      gemini.ts               # Google GenAI vision & explainer wrappers
-      mailer.ts               # Nodemailer Gmail SMTP client + accessible HTML templates
-      validators.ts           # Zod validation schemas for all inputs & AI outputs
-      rateLimit.ts            # In-memory IP rate limiter
-      audit.ts                # Audit logging helper
-      seed.ts                 # Demo household seed loader
-    components/               # Reusable accessible UI components
-    tests/                    # Vitest unit test suites for pure logic
+Browser (Next.js pages)
+   |  fetch
+   v
+Next.js API routes  --- session check (JWT cookie) ---> permissions matrix
+   |        |        |
+   |        |        +--> Gemini API (prescription scan, draft only)
+   |        +-----------> Nodemailer / Gmail SMTP (reminders)
+   v
+Firestore (server-side only)
+
+cron-job.org --POST + x-cron-secret--> /api/cron/reminders
 ```
 
----
+Key design choices:
+- **Firestore is never accessed from the browser.** All reads and writes go through API routes that take the household and role from the verified session, never from client input.
+- **Business logic lives in pure functions** (`schedule`, `adherence`, `permissions`) so it is easy to unit test.
+- **Idempotent cron.** `reminderSentAt` and `escalatedAt` flags prevent duplicate emails.
+- **Queries use a single household filter** and filter in code, so no manual Firestore indexes are required.
 
-## 5. Tech Stack & Google Services
+## Project structure
 
-| Layer | Technology | Details |
-| :--- | :--- | :--- |
-| **Framework** | Next.js 14 (App Router) + TypeScript (Strict) | Single repo for UI and server endpoints |
-| **Styling** | Tailwind CSS | 18px+ base font, high-contrast tokens, WCAG AAA targets |
-| **Database** | Google Firebase Firestore (`firebase-admin`) | **Server-side only**. Browser never touches Firestore |
-| **AI Integration** | Google Gemini API via `@google/genai` | Vision model for prescription scan, text model for explainer |
-| **Authentication** | Passcode + Member PIN (`bcryptjs`) + `jose` JWT | `httpOnly`, `SameSite=Lax`, secure cookies |
-| **Email Service** | Nodemailer with Gmail SMTP | High-deliverability transactional reminders |
-| **Testing** | Vitest | Fast unit tests for pure domain logic |
-| **Deployment** | Vercel | Instant global edge delivery and continuous integration |
+```
+src/
+  app/            pages and API routes
+    api/          auth, medications, doses, appointments, adherence,
+                  permissions, audit, ai/scan, cron/reminders
+  lib/            firebase, auth, permissions, schedule, adherence,
+                  gemini, mailer, validators, rateLimit, audit
+  components/     shared UI
+  tests/          unit tests
+```
 
----
+## Getting started
 
-## 6. Setup & Installation Instructions
-
-### Prerequisites
-- Node.js 18.x or 20.x or higher
-- A Google Cloud / Firebase project with Firestore enabled
-- A Google AI Studio Gemini API key
-- A Gmail account with an App Password configured
-
-### Installation
 ```bash
-# Clone repository
-git clone https://github.com/your-username/carecircle.git
+git clone [https://github.com/iamshubham18/carecircle.git]
 cd carecircle
-
-# Install dependencies
 npm install
-
-# Configure environment variables
-cp .env.example .env.local
-```
-
-### Running Locally
-```bash
-# Start Next.js development server
+cp .env.example .env.local   # then fill in the values
 npm run dev
-
-# Run TypeScript checks
-npm run typecheck
-
-# Run ESLint
-npm run lint
-
-# Run unit tests
-npm test
-
-# Build for production
-npm run build
 ```
 
----
+Open http://localhost:3000.
 
-## 7. Environment Variables Reference
+### Environment variables
 
-See `.env.example` for the full schema. Secrets must **only** reside in `.env.local` or Vercel dashboard:
+See `.env.example`. Required:
 
-| Variable | Purpose | Example / Format |
-| :--- | :--- | :--- |
-| `FIREBASE_PROJECT_ID` | Firebase Project identifier | `carecircle-prod` |
-| `FIREBASE_CLIENT_EMAIL` | Service Account client email | `firebase-adminsdk@...iam.gserviceaccount.com` |
-| `FIREBASE_PRIVATE_KEY` | Service Account private key | `"-----BEGIN PRIVATE KEY-----\n..."` |
-| `GEMINI_API_KEY` | Google AI Studio API key | `AIzaSy...` |
-| `GEMINI_MODEL` | Gemini Flash model name | `gemini-1.5-flash` |
-| `JWT_SECRET` | Secret key for signing session tokens | `32+_random_character_string` |
-| `SMTP_HOST` | Gmail SMTP server | `smtp.gmail.com` |
-| `SMTP_PORT` | Gmail SMTP SSL port | `465` |
-| `SMTP_USER` | Gmail address sending reminders | `carecircle.notify@gmail.com` |
-| `SMTP_PASS` | Gmail 16-character App Password | `xxxx xxxx xxxx xxxx` |
-| `MAIL_FROM` | Sender display name and email | `"CareCircle <carecircle.notify@gmail.com>"` |
-| `CRON_SECRET` | Bearer secret for `/api/cron/reminders` | Random hexadecimal string |
-| `APP_URL` | Public application URL | `https://your-app.vercel.app` |
-| `DEFAULT_TIMEZONE` | Fallback timezone for schedule math | `Asia/Kolkata` |
+| Variable | Purpose |
+|---|---|
+| `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` | Firebase service account (server-side) |
+| `GEMINI_API_KEY`, `GEMINI_MODEL` | Gemini API key and model name |
+| `JWT_SECRET` | Signing key for session cookies (32+ random characters) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM` | Gmail SMTP with an app password |
+| `CRON_SECRET` | Shared secret for the reminders endpoint |
+| `APP_URL`, `DEFAULT_TIMEZONE` | App URL and household timezone (default Asia/Kolkata) |
 
----
+Optional: `GRACE_MINUTES`, `ESCALATION_MINUTES`, `LOOKAHEAD_MINUTES` to shorten the reminder windows when testing.
 
-## 8. Security, Accessibility & Testing Notes
+### Scripts
 
-### Security Standards
-- **Zero Client-Side DB Access**: All Firestore queries and mutations execute strictly in server route handlers.
-- **Safe Authentication**: PINs are never stored in plain text (salted and hashed with `bcryptjs`). Sessions use `httpOnly`, `SameSite=Lax`, and `Secure` cookies.
-- **No IDOR**: Every route handler validates that the accessed record belongs to the authenticated user's `householdId`.
-- **Strict Input Validation**: Zod schemas validate every API request body, query parameter, and Gemini output before processing.
+```bash
+npm run dev        # start the dev server
+npm run build      # production build
+npm run lint       # ESLint
+npm run typecheck  # TypeScript
+npm test           # Vitest
+```
 
-### Accessibility Design
-- **Base Typography**: 18px base font size for enhanced legibility.
-- **High-Contrast Colors**: Color contrast exceeds WCAG AA (4.5:1), aiming for AAA (7:1).
-- **Navigation & Focus**: Skip-to-content link, semantic HTML (`nav`, `main`, `h1`), and visible focus rings.
-- **Motion Reduction**: Full support for `prefers-reduced-motion`.
+### Running reminders
 
-### Automated Testing
-- Pure business logic in `src/lib` is covered by automated unit tests (`schedule.test.ts`, `permissions.test.ts`, `adherence.test.ts`, `validators.test.ts`, `auth.test.ts`).
+Call the endpoint with the secret header (the live setup uses cron-job.org every 5 minutes):
 
----
+```bash
+curl -X POST -H "x-cron-secret: $CRON_SECRET" https://[LIVE_URL]/api/cron/reminders
+```
 
-## 9. Limitations & Future Roadmap
+Requests without the correct secret receive `401`.
 
-- **Voice Interaction & Natural Speech**: Real-time bi-directional voice interface for seniors who find touch typing challenging.
-- **SMS & WhatsApp Dispatch**: Twilio / WhatsApp Business messaging for households without active email apps on phones.
-- **Smart Dispenser & Wearable Integration**: Bluetooth pill dispenser tracking and Apple Health / Fitbit vitals correlation.
-- **Multi-Language Localization**: Dynamic translation into vernacular regional languages.
+## Testing
+
+Vitest unit tests cover:
+- Dose schedule generation, timezone handling, missed-dose detection, escalation timing and idempotency
+- Adherence calculation, including empty data
+- Permissions for every role and custom matrix, including the elder override
+- zod validators and auth helpers (PIN hashing, JWT signing and expiry)
+- Gemini response parsing and timeout handling, using mocked output
+
+Run them with `npm test`.
+
+## Security
+
+- PINs hashed with bcrypt; household codes are random
+- Signed JWT in an httpOnly, SameSite cookie
+- Rate limiting on authentication and scan routes
+- zod validation on every request body and on Gemini output
+- Role and household checks on the server for every route; the client never supplies role or household
+- Upload limits: allowed image types and a size cap
+- Secrets only in environment variables; no keys in the repo
+- Cron endpoint requires a secret header
+
+## Accessibility
+
+- Large type and 48px+ interactive targets in the elder view
+- High-contrast colours; status shown with text and icon, never colour alone
+- Labelled form fields, ARIA live regions for status messages, visible focus states
+- Semantic HTML with a skip link and keyboard navigation
+
+## AI safety
+
+Gemini output is always a **draft**. Users review, edit and confirm before anything is saved, and the interface reminds them to check with their doctor. CareCircle does not diagnose or suggest doses.
+
+## Limitations and future work
+
+- Plain-language medicine explainer and weekly family digest
+- Approval workflow for edits made by non-elders
+- Voice input and read-aloud for the elder view
+- SMS or WhatsApp reminders and push notifications
+- Google Calendar sync for appointments
+- Distributed rate limiting (the current limiter is in-memory)
+
+## Author
+
+Shubham Kumar Verma, solo participant, Catalyst Hackathon 2026.
